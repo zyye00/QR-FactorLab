@@ -83,6 +83,25 @@ The factor panel contains `reversal_5`, `momentum_20`, `low_volatility_20`,
 `turnover_change_20`, and `liquidity_20`. Each factor is winsorized and z-scored
 cross-sectionally by date.
 
+## Labels
+
+After preprocessing data, compute forward excess-return labels:
+
+```bash
+quant compute-labels
+```
+
+Output:
+
+```text
+data/processed/label_panel.parquet
+```
+
+The label panel contains `fwd_excess_ret_5d` and `fwd_excess_ret_20d`, aligned to
+the same `date` + `ticker` row as the factor observation. Tail rows without a
+full forward horizon are kept as `NaN` so downstream evaluation can drop them
+explicitly.
+
 ## Checks
 
 ```bash

@@ -3,6 +3,7 @@ from collections.abc import Sequence
 
 from quant.data import download_data
 from quant.factors import compute_factors
+from quant.labels import compute_labels
 from quant.preprocess import preprocess_data
 
 
@@ -20,6 +21,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     factors_parser = subparsers.add_parser("compute-factors")
     factors_parser.add_argument("--config", default="config.yaml")
 
+    labels_parser = subparsers.add_parser("compute-labels")
+    labels_parser.add_argument("--config", default="config.yaml")
+
     args = parser.parse_args(argv)
     if args.command == "download-data":
         paths = download_data(
@@ -34,3 +38,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     elif args.command == "compute-factors":
         path = compute_factors(config_path=args.config)
         print(f"factor_panel: {path}")
+    elif args.command == "compute-labels":
+        path = compute_labels(config_path=args.config)
+        print(f"label_panel: {path}")

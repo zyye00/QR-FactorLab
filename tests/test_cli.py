@@ -53,3 +53,20 @@ def test_compute_factors_cli_calls_factor_builder(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert "factor_panel:" in output
     assert "factor_panel.parquet" in output
+
+
+def test_compute_labels_cli_calls_label_builder(monkeypatch, capsys) -> None:
+    calls = {}
+
+    def fake_compute_labels(config_path: str) -> Path:
+        calls["config_path"] = config_path
+        return Path("data/processed/label_panel.parquet")
+
+    monkeypatch.setattr(cli, "compute_labels", fake_compute_labels)
+
+    cli.main(["compute-labels", "--config", "custom.yaml"])
+
+    assert calls == {"config_path": "custom.yaml"}
+    output = capsys.readouterr().out
+    assert "label_panel:" in output
+    assert "label_panel.parquet" in output
