@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 .pytest_tmp/
+.pytest_tmp_current/
 .ruff_cache/
 
 data/raw/*

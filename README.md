@@ -65,6 +65,24 @@ The cleaned panel removes duplicate `date` + `ticker` rows, rows with missing
 or non-positive `close`, and rows with `volume <= 0`. It adds `ret_1d`,
 `ret_5d`, and `ret_20d`.
 
+## Factors
+
+After preprocessing data, compute the standardized factor panel:
+
+```bash
+quant compute-factors
+```
+
+Output:
+
+```text
+data/processed/factor_panel.parquet
+```
+
+The factor panel contains `reversal_5`, `momentum_20`, `low_volatility_20`,
+`turnover_change_20`, and `liquidity_20`. Each factor is winsorized and z-scored
+cross-sectionally by date.
+
 ## Checks
 
 ```bash

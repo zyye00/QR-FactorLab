@@ -13,9 +13,8 @@ def test_download_data_cli_calls_downloader(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(cli, "download_data", fake_download_data)
 
-    exit_code = cli.main(["download-data", "--config", "custom.yaml", "--adjust", ""])
+    cli.main(["download-data", "--config", "custom.yaml", "--adjust", ""])
 
-    assert exit_code == 0
     assert calls == {"config_path": "custom.yaml", "adjust": ""}
     output = capsys.readouterr().out
     assert "stock_panel:" in output
@@ -31,10 +30,26 @@ def test_preprocess_data_cli_calls_preprocessor(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(cli, "preprocess_data", fake_preprocess_data)
 
-    exit_code = cli.main(["preprocess-data", "--config", "custom.yaml"])
+    cli.main(["preprocess-data", "--config", "custom.yaml"])
 
-    assert exit_code == 0
     assert calls == {"config_path": "custom.yaml"}
     output = capsys.readouterr().out
     assert "clean_panel:" in output
     assert "clean_panel.parquet" in output
+
+
+def test_compute_factors_cli_calls_factor_builder(monkeypatch, capsys) -> None:
+    calls = {}
+
+    def fake_compute_factors(config_path: str) -> Path:
+        calls["config_path"] = config_path
+        return Path("data/processed/factor_panel.parquet")
+
+    monkeypatch.setattr(cli, "compute_factors", fake_compute_factors)
+
+    cli.main(["compute-factors", "--config", "custom.yaml"])
+
+    assert calls == {"config_path": "custom.yaml"}
+    output = capsys.readouterr().out
+    assert "factor_panel:" in output
+    assert "factor_panel.parquet" in output

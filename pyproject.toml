@@ -42,8 +42,9 @@ extend-select = ["A"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--basetemp=.pytest_tmp"
+addopts = "--basetemp=.pytest_tmp_current -p no:cacheprovider"
 
 [tool.mypy]
 python_version = "3.13"
 ignore_missing_imports = true
+
