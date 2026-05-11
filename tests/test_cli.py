@@ -107,3 +107,37 @@ def test_run_backtest_cli_calls_backtest_builder(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert "quantile_returns:" in output
     assert "quantile_returns.parquet" in output
+
+
+def test_analyze_costs_cli_calls_cost_builder(monkeypatch, capsys) -> None:
+    calls = {}
+
+    def fake_compute_cost_analysis(config_path: str) -> dict[str, Path]:
+        calls["config_path"] = config_path
+        return {"cost_sensitivity_summary": Path("data/processed/costs.csv")}
+
+    monkeypatch.setattr(cli, "compute_cost_analysis", fake_compute_cost_analysis)
+
+    cli.main(["analyze-costs", "--config", "custom.yaml"])
+
+    assert calls == {"config_path": "custom.yaml"}
+    output = capsys.readouterr().out
+    assert "cost_sensitivity_summary:" in output
+    assert "costs.csv" in output
+
+
+def test_bootstrap_ic_cli_calls_bootstrap_builder(monkeypatch, capsys) -> None:
+    calls = {}
+
+    def fake_compute_bootstrap_ic(config_path: str) -> dict[str, Path]:
+        calls["config_path"] = config_path
+        return {"bootstrap_ic_summary": Path("data/processed/bootstrap_ic.csv")}
+
+    monkeypatch.setattr(cli, "compute_bootstrap_ic", fake_compute_bootstrap_ic)
+
+    cli.main(["bootstrap-ic", "--config", "custom.yaml"])
+
+    assert calls == {"config_path": "custom.yaml"}
+    output = capsys.readouterr().out
+    assert "bootstrap_ic_summary:" in output
+    assert "bootstrap_ic.csv" in output

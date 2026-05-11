@@ -148,6 +148,37 @@ Each factor is split into Q1-Q5 by date. The backtest reports average forward
 label returns for each quantile, Q5-Q1 long-short returns, and Q5 long-only
 returns.
 
+## Transaction Costs And Bootstrap
+
+After running the quantile backtest, evaluate transaction-cost sensitivity:
+
+```bash
+quant analyze-costs
+```
+
+Outputs:
+
+```text
+data/processed/long_short_turnover.parquet
+data/processed/long_only_turnover.parquet
+data/processed/cost_adjusted_long_short_returns.parquet
+data/processed/cost_adjusted_long_only_returns.parquet
+data/processed/cost_sensitivity_summary.csv
+reports/figures/cost_sensitivity.png
+```
+
+Bootstrap IC mean confidence intervals:
+
+```bash
+quant bootstrap-ic
+```
+
+Output:
+
+```text
+data/processed/bootstrap_ic_summary.csv
+```
+
 ## Checks
 
 ```bash
