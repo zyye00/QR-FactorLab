@@ -11,6 +11,8 @@ from quant.backtest import (
     compute_long_short_returns,
     compute_quantile_backtest,
     compute_quantile_returns,
+    factor_directions_from_ic_summary,
+    infer_factor_directions,
     select_rebalance_dates,
     summarize_backtest,
 )
@@ -53,6 +55,72 @@ def test_compute_quantile_returns_and_portfolio_returns() -> None:
     assert long_only.loc[pd.Timestamp("2024-01-01"), pair] == pytest.approx(0.05)
 
 
+def test_portfolio_returns_reverse_negative_factor_direction() -> None:
+    dates = pd.to_datetime(["2024-01-01"])
+    quantile_returns = pd.DataFrame(
+        {
+            "factor_a__fwd_excess_ret_5d__Q1": [0.05],
+            "factor_a__fwd_excess_ret_5d__Q5": [0.01],
+        },
+        index=dates,
+    )
+    directions = {"factor_a__fwd_excess_ret_5d": -1}
+
+    long_short = compute_long_short_returns(
+        quantile_returns,
+        n_quantiles=5,
+        directions=directions,
+    )
+    long_only = compute_long_only_returns(
+        quantile_returns,
+        long_quantile=5,
+        directions=directions,
+    )
+
+    assert long_short.loc[
+        pd.Timestamp("2024-01-01"), "factor_a__fwd_excess_ret_5d"
+    ] == pytest.approx(0.04)
+    assert long_only.loc[
+        pd.Timestamp("2024-01-01"), "factor_a__fwd_excess_ret_5d"
+    ] == pytest.approx(0.05)
+
+
+def test_factor_directions_use_rank_ic_mean() -> None:
+    summary = pd.DataFrame(
+        {
+            "factor_label": ["factor_a__label", "factor_b__label"],
+            "rank_ic_mean": [-0.1, 0.2],
+            "ic_mean": [0.3, -0.4],
+        }
+    )
+
+    directions = factor_directions_from_ic_summary(summary)
+
+    assert directions == {"factor_a__label": -1, "factor_b__label": 1}
+
+
+def test_infer_factor_directions_uses_daily_rank_ic() -> None:
+    index = pd.MultiIndex.from_product(
+        [
+            pd.to_datetime(["2024-01-01", "2024-01-02"]),
+            ["000001", "000002", "000003"],
+        ],
+        names=["date", "ticker"],
+    )
+    factors = pd.DataFrame(
+        {"factor_a": [1.0, 2.0, 3.0, 1.0, 2.0, 3.0]},
+        index=index,
+    )
+    labels = pd.DataFrame(
+        {"fwd_excess_ret_5d": [3.0, 2.0, 1.0, 3.0, 2.0, 1.0]},
+        index=index,
+    )
+
+    directions = infer_factor_directions(factors, labels)
+
+    assert directions == {"factor_a__fwd_excess_ret_5d": -1}
+
+
 def test_compute_cumulative_returns_compounds_returns() -> None:
     returns = pd.DataFrame(
         {"factor_a__label": [0.10, -0.10]},
@@ -81,6 +149,28 @@ def test_select_rebalance_dates_keeps_last_date_per_period() -> None:
         pd.Timestamp("2024-01-02"),
         pd.Timestamp("2024-01-08"),
     ]
+
+
+def test_select_rebalance_dates_can_follow_label_horizon() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=25)
+    returns = pd.DataFrame(
+        {
+            "factor_a__fwd_excess_ret_5d__Q1": range(25),
+            "factor_a__fwd_excess_ret_20d__Q1": range(100, 125),
+        },
+        index=dates,
+    )
+
+    selected = select_rebalance_dates(returns, "label_horizon")
+
+    five_day_dates = selected.index[
+        selected["factor_a__fwd_excess_ret_5d__Q1"].notna()
+    ].tolist()
+    twenty_day_dates = selected.index[
+        selected["factor_a__fwd_excess_ret_20d__Q1"].notna()
+    ].tolist()
+    assert five_day_dates == dates[[0, 5, 10, 15, 20]].tolist()
+    assert twenty_day_dates == dates[[0, 20]].tolist()
 
 
 def test_summarize_backtest_reports_core_statistics() -> None:

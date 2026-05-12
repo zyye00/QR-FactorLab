@@ -141,3 +141,20 @@ def test_bootstrap_ic_cli_calls_bootstrap_builder(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert "bootstrap_ic_summary:" in output
     assert "bootstrap_ic.csv" in output
+
+
+def test_generate_report_cli_calls_report_builder(monkeypatch, capsys) -> None:
+    calls = {}
+
+    def fake_generate_report(config_path: str) -> dict[str, Path]:
+        calls["config_path"] = config_path
+        return {"final_report_template": Path("reports/final_report.md")}
+
+    monkeypatch.setattr(cli, "generate_report", fake_generate_report)
+
+    cli.main(["generate-report", "--config", "custom.yaml"])
+
+    assert calls == {"config_path": "custom.yaml"}
+    output = capsys.readouterr().out
+    assert "final_report_template:" in output
+    assert "final_report.md" in output

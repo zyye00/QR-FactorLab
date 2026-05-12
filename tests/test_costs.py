@@ -31,6 +31,45 @@ def test_compute_turnover_from_weight_changes() -> None:
     assert turnover.loc[pd.Timestamp("2024-01-02"), "factor_a"] == pytest.approx(1.0)
 
 
+def test_compute_turnover_ignores_sparse_non_rebalance_rows() -> None:
+    index = pd.MultiIndex.from_tuples(
+        [
+            (pd.Timestamp("2024-01-01"), "000001"),
+            (pd.Timestamp("2024-01-01"), "000002"),
+            (pd.Timestamp("2024-01-02"), "000001"),
+            (pd.Timestamp("2024-01-02"), "000002"),
+            (pd.Timestamp("2024-01-21"), "000001"),
+            (pd.Timestamp("2024-01-21"), "000002"),
+        ],
+        names=["date", "ticker"],
+    )
+    weights = pd.DataFrame(
+        {
+            "factor_a__fwd_excess_ret_20d": [
+                0.5,
+                0.5,
+                float("nan"),
+                float("nan"),
+                1.0,
+                0.0,
+            ],
+        },
+        index=index,
+    )
+
+    turnover = compute_turnover(weights)
+
+    assert turnover.loc[
+        pd.Timestamp("2024-01-01"), "factor_a__fwd_excess_ret_20d"
+    ] == pytest.approx(1.0)
+    assert pd.isna(
+        turnover.loc[pd.Timestamp("2024-01-02"), "factor_a__fwd_excess_ret_20d"]
+    )
+    assert turnover.loc[
+        pd.Timestamp("2024-01-21"), "factor_a__fwd_excess_ret_20d"
+    ] == pytest.approx(1.0)
+
+
 def test_apply_transaction_cost_subtracts_turnover_times_rate() -> None:
     returns = pd.DataFrame(
         {"factor_a__label": [0.10, 0.20]},
@@ -65,6 +104,24 @@ def test_build_quantile_portfolio_weights_matches_long_short_returns() -> None:
     first_date = weights.xs(pd.Timestamp("2024-01-01"), level="date")["factor_a"]
     assert first_date.loc["000001"] == pytest.approx(-1.0)
     assert first_date.loc["000005"] == pytest.approx(1.0)
+    assert first_date.sum() == pytest.approx(0.0)
+
+
+def test_build_quantile_portfolio_weights_reverses_negative_direction() -> None:
+    factors, _ = _sample_factor_label_panels()
+
+    weights = build_quantile_portfolio_weights(
+        factors,
+        factor_columns=["factor_a"],
+        rebalance_dates=pd.DatetimeIndex([pd.Timestamp("2024-01-01")]),
+        n_quantiles=5,
+        portfolio="long_short",
+        directions={"factor_a": -1},
+    )
+
+    first_date = weights.xs(pd.Timestamp("2024-01-01"), level="date")["factor_a"]
+    assert first_date.loc["000001"] == pytest.approx(1.0)
+    assert first_date.loc["000005"] == pytest.approx(-1.0)
     assert first_date.sum() == pytest.approx(0.0)
 
 

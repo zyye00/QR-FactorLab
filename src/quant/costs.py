@@ -9,11 +9,15 @@ import pandas as pd
 import yaml
 
 from quant.backtest import (
+    LABEL_HORIZON_REBALANCE,
     assign_quantile_groups,
     compute_cumulative_returns,
     compute_long_only_returns,
     compute_long_short_returns,
     compute_quantile_returns,
+    direction_for_pair,
+    infer_factor_directions,
+    load_factor_directions,
     select_rebalance_dates,
 )
 from quant.data import PANEL_INDEX, save_parquet
@@ -31,7 +35,7 @@ def compute_turnover(weights: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(index=dates)
     result.index.name = "date"
     for column in weights.columns:
-        matrix = weights[column].unstack("ticker").fillna(0).sort_index()
+        matrix = weights[column].dropna().unstack("ticker").fillna(0).sort_index()
         turnover = matrix.diff().abs().sum(axis=1)
         if not matrix.empty:
             turnover.iloc[0] = matrix.iloc[0].abs().sum()
@@ -47,11 +51,10 @@ def apply_transaction_cost(
     rate = rate_bps / 10_000
     adjusted = returns.copy()
     for column in adjusted.columns:
-        factor = _factor_from_pair(column)
-        if factor not in turnover.columns:
-            raise ValueError(f"Missing turnover column for factor {factor}.")
+        turnover_column = _turnover_column_for_return(column, turnover)
         adjusted[column] = (
-            adjusted[column] - turnover[factor].reindex(adjusted.index) * rate
+            adjusted[column]
+            - turnover[turnover_column].reindex(adjusted.index) * rate
         )
     return adjusted
 
@@ -101,6 +104,7 @@ def build_quantile_portfolio_weights(
     rebalance_dates: pd.Index,
     n_quantiles: int = 5,
     portfolio: str = "long_short",
+    directions: dict[str, int] | None = None,
 ) -> pd.DataFrame:
     if portfolio not in {"long_short", "long_only"}:
         raise ValueError("portfolio must be 'long_short' or 'long_only'.")
@@ -113,8 +117,34 @@ def build_quantile_portfolio_weights(
             groups,
             n_quantiles=n_quantiles,
             portfolio=portfolio,
+            direction=direction_for_pair(factor, directions),
         )
     return weights.sort_index()
+
+
+def _build_return_portfolio_weights(
+    factor_panel: pd.DataFrame,
+    returns: pd.DataFrame,
+    n_quantiles: int,
+    portfolio: str,
+    directions: dict[str, int],
+) -> pd.DataFrame:
+    frames = []
+    for column in returns.columns:
+        rebalance_dates = returns.index[returns[column].notna()]
+        factor = _factor_from_pair(column)
+        weights = build_quantile_portfolio_weights(
+            factor_panel,
+            [factor],
+            rebalance_dates,
+            n_quantiles=n_quantiles,
+            portfolio=portfolio,
+            directions={factor: direction_for_pair(column, directions)},
+        )
+        frames.append(weights.rename(columns={factor: column}))
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, axis=1).sort_index()
 
 
 def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
@@ -126,7 +156,10 @@ def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     reports_dir = _configured_reports_dir(config, config_file)
     figures_dir = reports_dir / "figures"
     n_quantiles = int(config.get("backtest", {}).get("n_quantiles", 5))
-    rebalance = config.get("backtest", {}).get("rebalance")
+    rebalance = config.get("backtest", {}).get(
+        "rebalance",
+        LABEL_HORIZON_REBALANCE,
+    )
     rates_bps = [float(rate) for rate in config.get("costs", {}).get("rates_bps", [])]
     if not rates_bps:
         raise ValueError("At least one transaction cost rate is required.")
@@ -135,6 +168,14 @@ def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     label_panel = pd.read_parquet(processed_dir / "label_panel.parquet")
     factor_columns = _configured_factor_columns(config, factor_panel)
     label_columns = _configured_label_columns(config, label_panel)
+    directions = load_factor_directions(processed_dir)
+    if not directions:
+        directions = infer_factor_directions(
+            factor_panel,
+            label_panel,
+            factor_columns,
+            label_columns,
+        )
 
     quantile_returns = compute_quantile_returns(
         factor_panel,
@@ -144,29 +185,30 @@ def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
         n_quantiles=n_quantiles,
     )
     quantile_returns = select_rebalance_dates(quantile_returns, rebalance)
-    rebalance_dates = quantile_returns.index
     long_short_returns = compute_long_short_returns(
         quantile_returns,
         n_quantiles=n_quantiles,
+        directions=directions,
     )
     long_only_returns = compute_long_only_returns(
         quantile_returns,
         long_quantile=n_quantiles,
+        directions=directions,
     )
 
-    long_short_weights = build_quantile_portfolio_weights(
+    long_short_weights = _build_return_portfolio_weights(
         factor_panel,
-        factor_columns,
-        rebalance_dates,
+        long_short_returns,
         n_quantiles=n_quantiles,
         portfolio="long_short",
+        directions=directions,
     )
-    long_only_weights = build_quantile_portfolio_weights(
+    long_only_weights = _build_return_portfolio_weights(
         factor_panel,
-        factor_columns,
-        rebalance_dates,
+        long_only_returns,
         n_quantiles=n_quantiles,
         portfolio="long_only",
+        directions=directions,
     )
     long_short_turnover = compute_turnover(long_short_weights)
     long_only_turnover = compute_turnover(long_only_weights)
@@ -281,7 +323,7 @@ def _summarize_costs(
         rate_label = _rate_label(rate)
         for column in gross_returns.columns:
             adjusted_column = f"{column}__cost_{rate_label}bps"
-            factor = _factor_from_pair(column)
+            turnover_column = _turnover_column_for_return(column, turnover)
             rows.append(
                 {
                     "factor_label": column,
@@ -293,7 +335,7 @@ def _summarize_costs(
                     "net_cumulative_return": adjusted_cumulative[
                         adjusted_column
                     ].iloc[-1],
-                    "average_turnover": turnover[factor].mean(),
+                    "average_turnover": turnover[turnover_column].mean(),
                     "n_periods": gross_returns[column].count(),
                 }
             )
@@ -304,11 +346,14 @@ def _weights_from_groups(
     groups: pd.Series,
     n_quantiles: int,
     portfolio: str,
+    direction: int = 1,
 ) -> pd.Series:
     weights = pd.Series(0.0, index=groups.index)
+    long_quantile = 1 if direction < 0 else n_quantiles
+    short_quantile = n_quantiles if direction < 0 else 1
     for _, group in groups.groupby(level="date", sort=True):
-        long_index = group[group == n_quantiles].index
-        short_index = group[group == 1].index
+        long_index = group[group == long_quantile].index
+        short_index = group[group == short_quantile].index
         if len(long_index) > 0:
             weights.loc[long_index] = 1 / len(long_index)
         if portfolio == "long_short" and len(short_index) > 0:
@@ -322,6 +367,15 @@ def _filter_rebalance_dates(
 ) -> pd.DataFrame:
     dates = factor_panel.index.get_level_values("date")
     return factor_panel[dates.isin(rebalance_dates)].sort_index()
+
+
+def _turnover_column_for_return(column: str, turnover: pd.DataFrame) -> str:
+    if column in turnover.columns:
+        return column
+    factor = _factor_from_pair(column)
+    if factor in turnover.columns:
+        return factor
+    raise ValueError(f"Missing turnover column for {column}.")
 
 
 def _select_return_columns(returns: pd.DataFrame, max_columns: int) -> list[str]:

@@ -10,6 +10,7 @@ from quant.factors import compute_factors
 from quant.labels import compute_labels
 from quant.metrics import compute_ic_analysis
 from quant.preprocess import preprocess_data
+from quant.report import generate_report
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -45,6 +46,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     bootstrap_parser = subparsers.add_parser("bootstrap-ic")
     bootstrap_parser.add_argument("--config", default="config.yaml")
 
+    report_parser = subparsers.add_parser("generate-report")
+    report_parser.add_argument("--config", default="config.yaml")
+
     args = parser.parse_args(argv)
     if args.command == "download-data":
         paths = download_data(config_path=args.config)
@@ -73,5 +77,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(f"{name}: {path}")
     elif args.command == "bootstrap-ic":
         paths = compute_bootstrap_ic(config_path=args.config)
+        for name, path in paths.items():
+            print(f"{name}: {path}")
+    elif args.command == "generate-report":
+        paths = generate_report(config_path=args.config)
         for name, path in paths.items():
             print(f"{name}: {path}")

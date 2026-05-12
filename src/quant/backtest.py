@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import matplotlib
@@ -14,6 +15,12 @@ from quant.factors import FACTOR_COLUMNS
 from quant.labels import LABEL_COLUMNS, align_factor_and_label
 
 DEFAULT_REPORTS_DIR = "reports"
+LABEL_HORIZON_REBALANCE = "label_horizon"
+POSITIVE_FACTOR_DIRECTION = 1
+NEGATIVE_FACTOR_DIRECTION = -1
+_FORWARD_LABEL_PATTERN = re.compile(
+    r"__(?:fwd_excess_ret|fwd_ret)_(?P<horizon>\d+)d(?:__Q\d+)?$"
+)
 
 
 def assign_quantile_groups(
@@ -64,6 +71,7 @@ def compute_quantile_returns(
 def compute_long_short_returns(
     quantile_returns: pd.DataFrame,
     n_quantiles: int = 5,
+    directions: Mapping[str, int] | None = None,
 ) -> pd.DataFrame:
     result = pd.DataFrame(index=quantile_returns.index)
     result.index.name = quantile_returns.index.name
@@ -71,20 +79,27 @@ def compute_long_short_returns(
         high = f"{pair}__Q{n_quantiles}"
         low = f"{pair}__Q1"
         if high in quantile_returns.columns and low in quantile_returns.columns:
-            result[pair] = quantile_returns[high] - quantile_returns[low]
+            if direction_for_pair(pair, directions) < 0:
+                result[pair] = quantile_returns[low] - quantile_returns[high]
+            else:
+                result[pair] = quantile_returns[high] - quantile_returns[low]
     return result.sort_index()
 
 
 def compute_long_only_returns(
     quantile_returns: pd.DataFrame,
     long_quantile: int = 5,
+    directions: Mapping[str, int] | None = None,
 ) -> pd.DataFrame:
     result = pd.DataFrame(index=quantile_returns.index)
     result.index.name = quantile_returns.index.name
-    suffix = f"__Q{long_quantile}"
-    for column in quantile_returns.columns:
-        if column.endswith(suffix):
-            result[column.removesuffix(suffix)] = quantile_returns[column]
+    for pair in _quantile_pairs(quantile_returns):
+        selected_quantile = (
+            1 if direction_for_pair(pair, directions) < 0 else long_quantile
+        )
+        column = f"{pair}__Q{selected_quantile}"
+        if column in quantile_returns.columns:
+            result[pair] = quantile_returns[column]
     return result.sort_index()
 
 
@@ -96,6 +111,8 @@ def select_rebalance_dates(
     returns: pd.DataFrame,
     rebalance: str | None,
 ) -> pd.DataFrame:
+    if _uses_label_horizon_rebalance(rebalance):
+        return select_label_horizon_rebalance_dates(returns)
     if rebalance is None or rebalance == "" or rebalance.upper() == "D":
         return returns.sort_index()
     if not isinstance(returns.index, pd.DatetimeIndex):
@@ -104,6 +121,28 @@ def select_rebalance_dates(
     periods = returns.index.to_series().dt.to_period(rebalance)
     last_dates = returns.groupby(periods, group_keys=False).tail(1).index
     return returns.loc[last_dates].sort_index()
+
+
+def select_label_horizon_rebalance_dates(returns: pd.DataFrame) -> pd.DataFrame:
+    if not isinstance(returns.index, pd.DatetimeIndex):
+        raise ValueError("returns index must be a DatetimeIndex.")
+
+    sorted_returns = returns.sort_index()
+    selected = []
+    for column in sorted_returns.columns:
+        horizon = _label_horizon_from_column(column)
+        column_dates = (
+            _every_nth_trading_date(sorted_returns.index, horizon)
+            if horizon is not None
+            else sorted_returns.index
+        )
+        selected.append(sorted_returns.loc[column_dates, column])
+
+    if not selected:
+        return sorted_returns
+    result = pd.concat(selected, axis=1).sort_index()
+    result.index.name = returns.index.name
+    return result
 
 
 def summarize_backtest(
@@ -117,6 +156,78 @@ def summarize_backtest(
     return summary.sort_index()
 
 
+def load_factor_directions(processed_dir: Path) -> dict[str, int]:
+    summary_path = processed_dir / "ic_summary.csv"
+    if not summary_path.exists():
+        return {}
+    return factor_directions_from_ic_summary(pd.read_csv(summary_path))
+
+
+def infer_factor_directions(
+    factor_panel: pd.DataFrame,
+    label_panel: pd.DataFrame,
+    factor_columns: Sequence[str] | None = None,
+    label_columns: Sequence[str] | None = None,
+) -> dict[str, int]:
+    factors = list(factor_columns or factor_panel.columns)
+    labels = list(label_columns or label_panel.columns)
+    aligned = align_factor_and_label(
+        factor_panel[factors],
+        label_panel[labels],
+        dropna=False,
+    )
+
+    directions = {}
+    for factor in factors:
+        for label in labels:
+            mean_rank_ic = _mean_daily_rank_correlation(aligned, factor, label)
+            directions[f"{factor}__{label}"] = (
+                NEGATIVE_FACTOR_DIRECTION
+                if pd.notna(mean_rank_ic) and mean_rank_ic < 0
+                else POSITIVE_FACTOR_DIRECTION
+            )
+    return directions
+
+
+def factor_directions_from_ic_summary(
+    ic_summary: pd.DataFrame,
+    metric: str = "rank_ic_mean",
+) -> dict[str, int]:
+    if "factor_label" in ic_summary.columns:
+        table = ic_summary.set_index("factor_label")
+    else:
+        table = ic_summary.copy()
+
+    if metric not in table.columns:
+        metric = "ic_mean"
+    if metric not in table.columns:
+        return {}
+
+    directions = {}
+    for factor_label, value in table[metric].items():
+        directions[str(factor_label)] = (
+            NEGATIVE_FACTOR_DIRECTION
+            if pd.notna(value) and float(value) < 0
+            else POSITIVE_FACTOR_DIRECTION
+        )
+    return directions
+
+
+def direction_for_pair(
+    pair: str,
+    directions: Mapping[str, int] | None = None,
+) -> int:
+    if not directions:
+        return POSITIVE_FACTOR_DIRECTION
+
+    direction = directions.get(pair)
+    if direction is None:
+        direction = directions.get(_factor_from_pair(pair))
+    if direction is None:
+        return POSITIVE_FACTOR_DIRECTION
+    return NEGATIVE_FACTOR_DIRECTION if direction < 0 else POSITIVE_FACTOR_DIRECTION
+
+
 def compute_quantile_backtest(config_path: str = "config.yaml") -> dict[str, Path]:
     config_file = Path(config_path)
     with config_file.open("r", encoding="utf-8") as file:
@@ -126,12 +237,23 @@ def compute_quantile_backtest(config_path: str = "config.yaml") -> dict[str, Pat
     reports_dir = _configured_reports_dir(config, config_file)
     figures_dir = reports_dir / "figures"
     n_quantiles = int(config.get("backtest", {}).get("n_quantiles", 5))
-    rebalance = config.get("backtest", {}).get("rebalance")
+    rebalance = config.get("backtest", {}).get(
+        "rebalance",
+        LABEL_HORIZON_REBALANCE,
+    )
 
     factor_panel = pd.read_parquet(processed_dir / "factor_panel.parquet")
     label_panel = pd.read_parquet(processed_dir / "label_panel.parquet")
     factor_columns = _configured_factor_columns(config, factor_panel)
     label_columns = _configured_label_columns(config, label_panel)
+    directions = load_factor_directions(processed_dir)
+    if not directions:
+        directions = infer_factor_directions(
+            factor_panel,
+            label_panel,
+            factor_columns,
+            label_columns,
+        )
 
     quantile_returns = compute_quantile_returns(
         factor_panel,
@@ -144,10 +266,12 @@ def compute_quantile_backtest(config_path: str = "config.yaml") -> dict[str, Pat
     long_short_returns = compute_long_short_returns(
         quantile_returns,
         n_quantiles=n_quantiles,
+        directions=directions,
     )
     long_only_returns = compute_long_only_returns(
         quantile_returns,
         long_quantile=n_quantiles,
+        directions=directions,
     )
     summary = summarize_backtest(long_short_returns, long_only_returns)
 
@@ -254,6 +378,24 @@ def _daily_quantile_returns(
     return returns.reindex(columns=range(1, n_quantiles + 1))
 
 
+def _mean_daily_rank_correlation(
+    aligned: pd.DataFrame,
+    factor: str,
+    label: str,
+) -> float:
+    correlations = []
+    for _, group in aligned[[factor, label]].groupby(level="date", sort=True):
+        pair = group[[factor, label]].dropna()
+        if len(pair) < 2:
+            continue
+        if pair[factor].nunique() < 2 or pair[label].nunique() < 2:
+            continue
+        correlations.append(pair[factor].corr(pair[label], method="spearman"))
+    if not correlations:
+        return np.nan
+    return float(np.nanmean(correlations))
+
+
 def _summarize_returns(returns: pd.DataFrame, prefix: str) -> pd.DataFrame:
     cumulative = compute_cumulative_returns(returns)
     counts = returns.count()
@@ -287,6 +429,31 @@ def _quantile_column(factor: str, label: str, quantile: int) -> str:
 
 def _short_pair_label(label: str) -> str:
     return label.replace("__fwd_excess_ret_", " -> ").replace("__fwd_ret_", " -> ")
+
+
+def _factor_from_pair(pair: str) -> str:
+    return pair.split("__", maxsplit=1)[0]
+
+
+def _uses_label_horizon_rebalance(rebalance: str | None) -> bool:
+    return isinstance(rebalance, str) and rebalance.lower() in {
+        LABEL_HORIZON_REBALANCE,
+        "horizon",
+        "auto",
+    }
+
+
+def _label_horizon_from_column(column: str) -> int | None:
+    match = _FORWARD_LABEL_PATTERN.search(column)
+    if match is None:
+        return None
+    return int(match.group("horizon"))
+
+
+def _every_nth_trading_date(index: pd.DatetimeIndex, n: int) -> pd.DatetimeIndex:
+    if n <= 0:
+        raise ValueError("rebalance horizon must be positive.")
+    return pd.DatetimeIndex(index[::n], name=index.name)
 
 
 def _configured_reports_dir(config: dict, config_path: Path) -> Path:

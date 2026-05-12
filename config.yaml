@@ -31,7 +31,7 @@ preprocess:
   min_amount: 10000000
 
 backtest:
-  rebalance: "W"
+  rebalance: "label_horizon"
   n_quantiles: 5
   weight_method: "equal"
 

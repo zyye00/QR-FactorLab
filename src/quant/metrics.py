@@ -1,10 +1,6 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
@@ -14,7 +10,6 @@ from quant.factors import FACTOR_COLUMNS
 from quant.labels import LABEL_COLUMNS, align_factor_and_label
 
 DEFAULT_ROLLING_WINDOW = 20
-DEFAULT_REPORTS_DIR = "reports"
 
 
 def compute_ic(
@@ -85,8 +80,6 @@ def compute_ic_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
         config = yaml.safe_load(file)
 
     processed_dir = Path(config["data"]["processed_dir"])
-    reports_dir = _configured_reports_dir(config, config_file)
-    figures_dir = reports_dir / "figures"
     factor_panel = pd.read_parquet(processed_dir / "factor_panel.parquet")
     label_panel = pd.read_parquet(processed_dir / "label_panel.parquet")
 
@@ -112,72 +105,13 @@ def compute_ic_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     rolling_ic_path = save_parquet(rolling_ic, processed_dir / "rolling_ic.parquet")
     summary_path = processed_dir / "ic_summary.csv"
     summary.to_csv(summary_path)
-    markdown_path = write_ic_summary_markdown(
-        summary,
-        reports_dir / "ic_summary.md",
-        rolling_window=int(rolling_window),
-    )
-    rolling_ic_figure_path = plot_rolling_ic(
-        rolling_ic,
-        summary,
-        figures_dir / "rolling_ic.png",
-    )
 
     return {
         "ic_panel": ic_path,
         "rank_ic_panel": rank_ic_path,
         "rolling_ic": rolling_ic_path,
         "ic_summary": summary_path,
-        "ic_summary_markdown": markdown_path,
-        "rolling_ic_figure": rolling_ic_figure_path,
     }
-
-
-def write_ic_summary_markdown(
-    summary: pd.DataFrame,
-    output_path: str | Path,
-    rolling_window: int = DEFAULT_ROLLING_WINDOW,
-) -> Path:
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    table = _ic_summary_markdown_table(summary)
-    content = (
-        "# IC Summary\n\n"
-        "IC is the daily cross-sectional Pearson correlation between factor "
-        "values and forward-return labels. Rank IC uses Spearman correlation.\n\n"
-        f"Rolling IC window: {rolling_window} trading days.\n\n"
-        f"{table}\n"
-    )
-    path.write_text(content, encoding="utf-8")
-    return path
-
-
-def plot_rolling_ic(
-    rolling_ic: pd.DataFrame,
-    summary: pd.DataFrame,
-    output_path: str | Path,
-    max_columns: int = 10,
-) -> Path:
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    selected = _select_rolling_ic_columns(rolling_ic, summary, max_columns=max_columns)
-    figure, axis = plt.subplots(figsize=(14, 8))
-    rolling_ic[selected].plot(ax=axis, linewidth=1.1)
-    axis.axhline(0, color="#111827", linewidth=1)
-    axis.set_title("Rolling IC")
-    axis.set_xlabel("date")
-    axis.set_ylabel("rolling IC")
-    axis.legend(
-        [_short_pair_label(column) for column in selected],
-        fontsize=8,
-        loc="best",
-    )
-    figure.tight_layout()
-    figure.savefig(path, dpi=160)
-    plt.close(figure)
-    return path
 
 
 def _compute_correlation_panel(
@@ -251,78 +185,6 @@ def _summarize_correlation_panel(panel: pd.DataFrame, prefix: str) -> pd.DataFra
         }
     )
     return summary
-
-
-def _ic_summary_markdown_table(summary: pd.DataFrame) -> str:
-    columns = [
-        "factor_label",
-        "ic_mean",
-        "ic_ir",
-        "ic_positive_rate",
-        "rank_ic_mean",
-        "rank_ic_ir",
-        "rank_ic_positive_rate",
-        "ic_n_days",
-    ]
-    table = summary.reset_index().sort_values("ic_mean", ascending=False)
-    rows = []
-    for _, row in table.iterrows():
-        rows.append(
-            [
-                str(row["factor_label"]),
-                _format_float(row["ic_mean"]),
-                _format_float(row["ic_ir"]),
-                _format_float(row["ic_positive_rate"]),
-                _format_float(row["rank_ic_mean"]),
-                _format_float(row["rank_ic_ir"]),
-                _format_float(row["rank_ic_positive_rate"]),
-                _format_count(row["ic_n_days"]),
-            ]
-        )
-    return _markdown_table(columns, rows)
-
-
-def _markdown_table(headers: Sequence[str], rows: list[list[str]]) -> str:
-    header = "| " + " | ".join(headers) + " |"
-    separator = "| " + " | ".join(["---"] * len(headers)) + " |"
-    body = ["| " + " | ".join(row) + " |" for row in rows]
-    return "\n".join([header, separator, *body])
-
-
-def _format_float(value: object) -> str:
-    if pd.isna(value):
-        return ""
-    return f"{float(value):.4f}"
-
-
-def _format_count(value: object) -> str:
-    if pd.isna(value):
-        return "0"
-    return str(int(value))
-
-
-def _select_rolling_ic_columns(
-    rolling_ic: pd.DataFrame,
-    summary: pd.DataFrame,
-    max_columns: int,
-) -> list[str]:
-    if rolling_ic.empty:
-        return []
-    ranked = summary["ic_mean"].abs().sort_values(ascending=False)
-    selected = [column for column in ranked.index if column in rolling_ic.columns]
-    selected.extend(column for column in rolling_ic.columns if column not in selected)
-    return selected[:max_columns]
-
-
-def _short_pair_label(label: str) -> str:
-    return label.replace("__fwd_excess_ret_", " -> ").replace("__fwd_ret_", " -> ")
-
-
-def _configured_reports_dir(config: dict, config_path: Path) -> Path:
-    reports_dir = Path(config.get("reports", {}).get("dir", DEFAULT_REPORTS_DIR))
-    if reports_dir.is_absolute():
-        return reports_dir
-    return config_path.parent / reports_dir
 
 
 def _configured_factor_columns(

@@ -90,17 +90,13 @@ def test_compute_ic_analysis_writes_outputs(tmp_path) -> None:
         "rank_ic_panel",
         "rolling_ic",
         "ic_summary",
-        "ic_summary_markdown",
-        "rolling_ic_figure",
     }
     assert all(path.exists() for path in paths.values())
     summary = pd.read_csv(paths["ic_summary"])
     assert summary.loc[0, "factor_label"] == "factor_a__fwd_excess_ret_5d"
     assert summary.loc[0, "ic_mean"] == pytest.approx(0.0)
-    markdown = paths["ic_summary_markdown"].read_text(encoding="utf-8")
-    assert "# IC Summary" in markdown
-    assert "factor_a__fwd_excess_ret_5d" in markdown
-    assert paths["rolling_ic_figure"].stat().st_size > 0
+    assert not (tmp_path / "reports" / "ic_summary.md").exists()
+    assert not (tmp_path / "reports" / "figures" / "rolling_ic.png").exists()
 
 
 def _sample_factor_label_panels() -> tuple[pd.DataFrame, pd.DataFrame]:
