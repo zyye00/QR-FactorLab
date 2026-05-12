@@ -7,9 +7,11 @@ requires-python = ">=3.13"
 dependencies = [
     "numpy",
     "pandas",
+    "scipy",
     "matplotlib",
     "akshare",
     "pyarrow",
+    "pytest",
     "pyyaml",
 ]
 
@@ -18,7 +20,6 @@ quant = "quant.cli:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
     "ruff",
 ]
 
