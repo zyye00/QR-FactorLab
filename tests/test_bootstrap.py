@@ -81,9 +81,7 @@ def test_bootstrap_ic_summary_returns_ic_and_rank_ic_rows() -> None:
 
     assert summary["metric"].tolist() == ["ic", "rank_ic"]
     assert set(summary["method"]) == {"iid"}
-    assert summary.loc[summary["metric"] == "ic", "mean"].iloc[0] == pytest.approx(
-        0.2
-    )
+    assert summary.loc[summary["metric"] == "ic", "mean"].iloc[0] == pytest.approx(0.2)
     rank_row = summary.loc[summary["metric"] == "rank_ic"].iloc[0]
     assert rank_row["ci_lower"] == pytest.approx(0.2)
     assert rank_row["ci_upper"] == pytest.approx(0.2)
@@ -153,24 +151,20 @@ def test_circular_block_sampler_rejects_invalid_parameters() -> None:
 
 
 def test_compute_bootstrap_ic_writes_summary(tmp_path) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
     pd.DataFrame(
         {"factor_a__fwd_excess_ret_5d": np.linspace(0.01, 0.12, 12)}
-    ).to_parquet(
-        processed_dir / "ic_panel.parquet"
+    ).to_parquet(work_dir / "ic_panel.parquet")
+    pd.DataFrame({"factor_a__fwd_excess_ret_5d": np.full(12, 0.2)}).to_parquet(
+        work_dir / "rank_ic_panel.parquet"
     )
-    pd.DataFrame(
-        {"factor_a__fwd_excess_ret_5d": np.full(12, 0.2)}
-    ).to_parquet(
-        processed_dir / "rank_ic_panel.parquet"
-    )
-    config_path = _write_config(tmp_path, processed_dir)
+    config_path = _write_config(tmp_path, work_dir)
 
     paths = compute_bootstrap_ic(config_path=str(config_path))
 
     assert paths.keys() == {"bootstrap_ic_summary"}
-    summary = pd.read_csv(paths["bootstrap_ic_summary"])
+    summary = pd.read_parquet(paths["bootstrap_ic_summary"])
     assert len(summary) == 2
     assert set(summary["metric"]) == {"ic", "rank_ic"}
     assert set(summary["method"]) == {"circular_block"}
@@ -180,9 +174,9 @@ def test_compute_bootstrap_ic_writes_summary(tmp_path) -> None:
     assert "bootstrap_std" in summary.columns
 
 
-def _write_config(tmp_path: Path, processed_dir: Path) -> Path:
+def _write_config(tmp_path: Path, work_dir: Path) -> Path:
     config = {
-        "data": {"processed_dir": str(processed_dir)},
+        "data": {"work_dir": str(work_dir)},
         "bootstrap": {
             "method": "circular_block",
             "n_bootstrap": 100,

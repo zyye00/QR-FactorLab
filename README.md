@@ -42,9 +42,9 @@ quant download-data
 Outputs:
 
 ```text
-data/raw/csi500_universe.parquet
-data/processed/stock_panel.parquet
-data/processed/benchmark_000905.parquet
+data/download.log
+data/source/stock_ohlcv.parquet
+data/source/benchmark_000905_ohlcv.parquet
 ```
 
 ## Preprocess
@@ -58,7 +58,7 @@ quant preprocess-data
 Output:
 
 ```text
-data/processed/clean_panel.parquet
+data/work/clean_panel.parquet
 ```
 
 The cleaned panel removes duplicate `date` + `ticker` rows, rows with missing
@@ -76,7 +76,7 @@ quant compute-factors
 Output:
 
 ```text
-data/processed/factor_panel.parquet
+data/work/factor_panel.parquet
 ```
 
 The factor panel contains `reversal_5`, `momentum_20`, `low_volatility_20`,
@@ -94,7 +94,7 @@ quant compute-labels
 Output:
 
 ```text
-data/processed/label_panel.parquet
+data/work/label_panel.parquet
 ```
 
 The label panel contains `fwd_excess_ret_5d` and `fwd_excess_ret_20d`, aligned to
@@ -114,10 +114,10 @@ quant compute-ic
 Outputs:
 
 ```text
-data/processed/ic_panel.parquet
-data/processed/rank_ic_panel.parquet
-data/processed/rolling_ic.parquet
-data/processed/ic_summary.csv
+data/work/ic_panel.parquet
+data/work/rank_ic_panel.parquet
+data/work/rolling_ic.parquet
+data/work/ic_summary.parquet
 ```
 
 IC is the daily cross-sectional Pearson correlation between a factor and a
@@ -136,10 +136,10 @@ quant run-backtest
 Outputs:
 
 ```text
-data/processed/quantile_returns.parquet
-data/processed/long_short_returns.parquet
-data/processed/long_only_returns.parquet
-data/processed/backtest_summary.csv
+data/work/quantile_returns.parquet
+data/work/long_short_returns.parquet
+data/work/long_only_returns.parquet
+data/work/backtest_summary.parquet
 reports/figures/quantile_cumulative_returns.png
 ```
 
@@ -148,7 +148,7 @@ label returns for each quantile, Q5-Q1 long-short returns, and Q5 long-only
 returns. By default, `backtest.rebalance: label_horizon` samples each
 factor-label portfolio on the label horizon: 5-day labels rebalance every 5
 trading days, and 20-day labels rebalance every 20 trading days. If
-`data/processed/ic_summary.csv` is available, the backtest uses `rank_ic_mean`
+`data/work/ic_summary.parquet` is available, the backtest uses `rank_ic_mean`
 to choose the long side: positive factor-label pairs use Q5, while negative
 pairs use Q1.
 
@@ -163,11 +163,11 @@ quant analyze-costs
 Outputs:
 
 ```text
-data/processed/long_short_turnover.parquet
-data/processed/long_only_turnover.parquet
-data/processed/cost_adjusted_long_short_returns.parquet
-data/processed/cost_adjusted_long_only_returns.parquet
-data/processed/cost_sensitivity_summary.csv
+data/work/long_short_turnover.parquet
+data/work/long_only_turnover.parquet
+data/work/cost_adjusted_long_short_returns.parquet
+data/work/cost_adjusted_long_only_returns.parquet
+data/work/cost_sensitivity_summary.parquet
 reports/figures/cost_sensitivity.png
 ```
 
@@ -180,7 +180,7 @@ quant bootstrap-ic
 Output:
 
 ```text
-data/processed/bootstrap_ic_summary.csv
+data/work/bootstrap_ic_summary.parquet
 ```
 
 ## Report Assets

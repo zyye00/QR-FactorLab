@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from quant.data import save_parquet
 from quant.factors import FACTOR_COLUMNS
 from quant.labels import LABEL_COLUMNS, align_factor_and_label
 
@@ -156,11 +155,11 @@ def summarize_backtest(
     return summary.sort_index()
 
 
-def load_factor_directions(processed_dir: Path) -> dict[str, int]:
-    summary_path = processed_dir / "ic_summary.csv"
+def load_factor_directions(work_dir: Path) -> dict[str, int]:
+    summary_path = work_dir / "ic_summary.parquet"
     if not summary_path.exists():
         return {}
-    return factor_directions_from_ic_summary(pd.read_csv(summary_path))
+    return factor_directions_from_ic_summary(pd.read_parquet(summary_path))
 
 
 def infer_factor_directions(
@@ -233,7 +232,8 @@ def compute_quantile_backtest(config_path: str = "config.yaml") -> dict[str, Pat
     with config_file.open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
     reports_dir = _configured_reports_dir(config, config_file)
     figures_dir = reports_dir / "figures"
     n_quantiles = int(config.get("backtest", {}).get("n_quantiles", 5))
@@ -242,11 +242,11 @@ def compute_quantile_backtest(config_path: str = "config.yaml") -> dict[str, Pat
         LABEL_HORIZON_REBALANCE,
     )
 
-    factor_panel = pd.read_parquet(processed_dir / "factor_panel.parquet")
-    label_panel = pd.read_parquet(processed_dir / "label_panel.parquet")
+    factor_panel = pd.read_parquet(work_dir / "factor_panel.parquet")
+    label_panel = pd.read_parquet(work_dir / "label_panel.parquet")
     factor_columns = _configured_factor_columns(config, factor_panel)
     label_columns = _configured_label_columns(config, label_panel)
-    directions = load_factor_directions(processed_dir)
+    directions = load_factor_directions(work_dir)
     if not directions:
         directions = infer_factor_directions(
             factor_panel,
@@ -275,20 +275,14 @@ def compute_quantile_backtest(config_path: str = "config.yaml") -> dict[str, Pat
     )
     summary = summarize_backtest(long_short_returns, long_only_returns)
 
-    quantile_path = save_parquet(
-        quantile_returns,
-        processed_dir / "quantile_returns.parquet",
-    )
-    long_short_path = save_parquet(
-        long_short_returns,
-        processed_dir / "long_short_returns.parquet",
-    )
-    long_only_path = save_parquet(
-        long_only_returns,
-        processed_dir / "long_only_returns.parquet",
-    )
-    summary_path = processed_dir / "backtest_summary.csv"
-    summary.to_csv(summary_path)
+    quantile_path = work_dir / "quantile_returns.parquet"
+    long_short_path = work_dir / "long_short_returns.parquet"
+    long_only_path = work_dir / "long_only_returns.parquet"
+    summary_path = work_dir / "backtest_summary.parquet"
+    quantile_returns.to_parquet(quantile_path)
+    long_short_returns.to_parquet(long_short_path)
+    long_only_returns.to_parquet(long_only_path)
+    summary.reset_index().to_parquet(summary_path)
     figure_path = plot_cumulative_returns(
         long_short_returns,
         long_only_returns,

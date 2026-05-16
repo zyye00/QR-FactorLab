@@ -9,7 +9,8 @@ import yaml
 LOGGER: logging.Logger = logging.getLogger(__name__)
 LOG_NAME: str = "download.log"
 STOCK_ADJUST: str = "hfq"
-OHLCV_COLUMNS: tuple[str] = (
+PANEL_INDEX = ["date", "ticker"]
+OHLCV_COLUMNS = [
     "open",
     "high",
     "low",
@@ -17,7 +18,7 @@ OHLCV_COLUMNS: tuple[str] = (
     "volume",
     "amount",
     "turnover",
-)
+]
 OHLCV_MAP: dict[str, str] = {
     "日期": "date",
     "股票代码": "ticker",
@@ -116,12 +117,12 @@ class FetchStocks(FetchData):
             failed = ", ".join(ticker for ticker in failures[:10])
             LOGGER.warning(f"Skipped {len(failures)} failed ticker(s): {failed}")
         if not df:
-            return pd.DataFrame(columns=["date", "ticker", *OHLCV_COLUMNS])
+            return pd.DataFrame(columns=[*PANEL_INDEX, *OHLCV_COLUMNS])
         return pd.concat(df, ignore_index=True)
 
     def _normalize(self, df: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame:
         df = df.rename(columns=OHLCV_MAP)
-        panel_columns = ["date", "ticker", *OHLCV_COLUMNS]
+        panel_columns = [*PANEL_INDEX, *OHLCV_COLUMNS]
         if ticker is not None:
             df["ticker"] = ticker
         for col in OHLCV_COLUMNS:
@@ -129,8 +130,7 @@ class FetchStocks(FetchData):
                 df[col] = pd.NA
         df["date"] = pd.to_datetime(df["date"])
         df["ticker"] = df["ticker"].astype(str).str.zfill(6)
-        panel_index = ["date", "ticker"]
-        return df[panel_columns].sort_values(panel_index)
+        return df[panel_columns].sort_values(PANEL_INDEX)
 
 
 class FetchIndex(FetchStocks):
@@ -146,32 +146,54 @@ class FetchIndex(FetchStocks):
         return frames
 
 
-def download_data(config_path: str) -> dict[str, Path]:
-    with Path(config_path).open() as f:
-        config = yaml.safe_load(f)["data"]
+def download_data(config_path: str = "config.yaml") -> dict[str, Path]:
+    config_file = Path(config_path)
+    with config_file.open("r", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+    data_config = config["data"]
 
-    raw_dir = Path(config["raw_dir"])
-    if raw_dir.parts[0] != "data":
-        raw_dir = "data" / raw_dir
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    LOGGER.addHandler(logging.FileHandler(raw_dir / LOG_NAME, mode="w"))
+    data_dir = Path(data_config["dir"])
+    source_dir = Path(data_config["source_dir"])
+    source_dir.mkdir(parents=True, exist_ok=True)
+    log_path = _configure_download_file_logging(data_dir)
 
-    tickers: pd.Series = FetchUniverse(**config).fetch(symbol=config["benchmark"])
-    stock_panel: pd.DataFrame = FetchStocks(**config).fetch(tickers=tickers)
-    stock_panel_path = raw_dir / "stock_panel.parquet"
+    tickers: pd.Series = FetchUniverse(**data_config).fetch(
+        symbol=data_config["benchmark"]
+    )
+    stock_panel: pd.DataFrame = FetchStocks(**data_config).fetch(tickers=tickers)
+    stock_panel_path = source_dir / "stock_ohlcv.parquet"
     stock_panel.to_parquet(stock_panel_path, index=False)
     LOGGER.info(
         f"Saved stock OHLCV panel with {len(stock_panel)} rows to {stock_panel_path}",
     )
 
-    benchmark_panel: pd.DataFrame = FetchIndex(**config).fetch(
-        symbol=config["benchmark"]
+    benchmark_panel: pd.DataFrame = FetchIndex(**data_config).fetch(
+        symbol=data_config["benchmark"]
     )
-    benchmark_panel_path = raw_dir / "benchmark_panel.parquet"
+    benchmark_panel_path = (
+        source_dir / f"benchmark_{data_config['benchmark']}_ohlcv.parquet"
+    )
     benchmark_panel.to_parquet(benchmark_panel_path, index=False)
     LOGGER.info(
         f"Saved benchmark OHLCV panel with {len(benchmark_panel)} rows to "
         f"{benchmark_panel_path}",
     )
 
-    return {"stocks": stock_panel_path, "benchmark": benchmark_panel_path}
+    return {
+        "download_log": log_path,
+        "stock_ohlcv": stock_panel_path,
+        "benchmark_ohlcv": benchmark_panel_path,
+    }
+
+
+def _configure_download_file_logging(data_dir: Path) -> Path:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    log_path = data_dir / LOG_NAME
+    for handler in list(LOGGER.handlers):
+        if getattr(handler, "_qr_download_file_handler", False):
+            LOGGER.removeHandler(handler)
+            handler.close()
+    handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+    handler._qr_download_file_handler = True
+    LOGGER.addHandler(handler)
+    return log_path

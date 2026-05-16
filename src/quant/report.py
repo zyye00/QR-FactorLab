@@ -21,14 +21,15 @@ def generate_report(config_path: str = "config.yaml") -> dict[str, Path]:
     with config_file.open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
+    source_dir = Path(config["data"]["source_dir"])
+    work_dir = Path(config["data"]["work_dir"])
     reports_dir = _configured_reports_dir(config, config_file)
     figures_dir = reports_dir / "figures"
     tables_dir = reports_dir / "tables"
     figures_dir.mkdir(parents=True, exist_ok=True)
     tables_dir.mkdir(parents=True, exist_ok=True)
 
-    context = _load_report_context(config, processed_dir)
+    context = _load_report_context(config, source_dir, work_dir)
     paths: dict[str, Path] = {}
     paths.update(_write_report_tables(context, tables_dir))
     paths.update(_write_report_figures(context, figures_dir))
@@ -38,9 +39,12 @@ def generate_report(config_path: str = "config.yaml") -> dict[str, Path]:
 
 def _load_report_context(
     config: dict[str, Any],
-    processed_dir: Path,
+    source_dir: Path,
+    work_dir: Path,
 ) -> dict[str, Any]:
-    benchmark_path = processed_dir / f"benchmark_{config['data']['benchmark']}.parquet"
+    benchmark_path = (
+        source_dir / f"benchmark_{config['data']['benchmark']}_ohlcv.parquet"
+    )
     if benchmark_path.exists():
         benchmark_panel = pd.read_parquet(benchmark_path)
     else:
@@ -48,27 +52,23 @@ def _load_report_context(
 
     return {
         "config": config,
-        "clean_panel": pd.read_parquet(processed_dir / "clean_panel.parquet"),
-        "factor_panel": pd.read_parquet(processed_dir / "factor_panel.parquet"),
-        "label_panel": pd.read_parquet(processed_dir / "label_panel.parquet"),
+        "clean_panel": pd.read_parquet(work_dir / "clean_panel.parquet"),
+        "factor_panel": pd.read_parquet(work_dir / "factor_panel.parquet"),
+        "label_panel": pd.read_parquet(work_dir / "label_panel.parquet"),
         "benchmark_panel": benchmark_panel,
-        "ic_summary": pd.read_csv(processed_dir / "ic_summary.csv"),
-        "rolling_ic": pd.read_parquet(processed_dir / "rolling_ic.parquet"),
-        "backtest_summary": pd.read_csv(processed_dir / "backtest_summary.csv"),
-        "long_short_returns": pd.read_parquet(
-            processed_dir / "long_short_returns.parquet"
-        ),
-        "long_only_returns": pd.read_parquet(
-            processed_dir / "long_only_returns.parquet"
-        ),
-        "cost_summary": pd.read_csv(processed_dir / "cost_sensitivity_summary.csv"),
+        "ic_summary": pd.read_parquet(work_dir / "ic_summary.parquet"),
+        "rolling_ic": pd.read_parquet(work_dir / "rolling_ic.parquet"),
+        "backtest_summary": pd.read_parquet(work_dir / "backtest_summary.parquet"),
+        "long_short_returns": pd.read_parquet(work_dir / "long_short_returns.parquet"),
+        "long_only_returns": pd.read_parquet(work_dir / "long_only_returns.parquet"),
+        "cost_summary": pd.read_parquet(work_dir / "cost_sensitivity_summary.parquet"),
         "cost_adjusted_long_short": pd.read_parquet(
-            processed_dir / "cost_adjusted_long_short_returns.parquet"
+            work_dir / "cost_adjusted_long_short_returns.parquet"
         ),
         "cost_adjusted_long_only": pd.read_parquet(
-            processed_dir / "cost_adjusted_long_only_returns.parquet"
+            work_dir / "cost_adjusted_long_only_returns.parquet"
         ),
-        "bootstrap_summary": pd.read_csv(processed_dir / "bootstrap_ic_summary.csv"),
+        "bootstrap_summary": pd.read_parquet(work_dir / "bootstrap_ic_summary.parquet"),
     }
 
 
@@ -294,8 +294,8 @@ def _data_table(context: dict[str, Any]) -> str:
     config = context["config"]
     clean_panel = context["clean_panel"]
     benchmark_panel = context["benchmark_panel"]
-    dates = clean_panel.index.get_level_values("date")
-    tickers = clean_panel.index.get_level_values("ticker")
+    dates = _panel_values(clean_panel, "date")
+    tickers = _panel_values(clean_panel, "ticker")
     rows = [
         ["股票池", str(config["data"]["universe"])],
         ["Benchmark", str(config["data"]["benchmark"])],
@@ -305,7 +305,7 @@ def _data_table(context: dict[str, Any]) -> str:
         ["股票数量", str(tickers.nunique())],
     ]
     if benchmark_panel is not None:
-        benchmark_dates = benchmark_panel.index.get_level_values("date")
+        benchmark_dates = _panel_values(benchmark_panel, "date")
         rows.extend(
             [
                 ["Benchmark 行数", str(len(benchmark_panel))],
@@ -314,6 +314,14 @@ def _data_table(context: dict[str, Any]) -> str:
             ]
         )
     return _markdown_table(["项目", "值"], rows)
+
+
+def _panel_values(panel: pd.DataFrame, name: str) -> pd.Index:
+    if name in panel.index.names:
+        return panel.index.get_level_values(name)
+    if name in panel.columns:
+        return pd.Index(panel[name])
+    raise ValueError(f"Panel is missing required field: {name}.")
 
 
 def _factor_table(config: dict[str, Any]) -> str:
@@ -417,9 +425,7 @@ def _cost_table(cost_summary: pd.DataFrame) -> str:
 
 def _bootstrap_table(bootstrap_summary: pd.DataFrame) -> str:
     table = bootstrap_summary.sort_values(["factor_label", "metric"])
-    count_column = (
-        "n_obs" if "n_obs" in bootstrap_summary.columns else "n_observations"
-    )
+    count_column = "n_obs" if "n_obs" in bootstrap_summary.columns else "n_observations"
     if {"factor", "label"}.issubset(bootstrap_summary.columns):
         columns = ["factor", "label", "metric", "mean"]
     else:

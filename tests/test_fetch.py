@@ -150,7 +150,8 @@ def test_download_data_writes_stock_and_benchmark_parquet(
         "\n".join(
             [
                 "data:",
-                "  raw_dir: data/raw",
+                "  dir: data",
+                "  source_dir: data/source",
                 "  start_date: '2024-01-01'",
                 "  end_date: '2024-01-31'",
                 "  benchmark: '000905'",
@@ -194,15 +195,18 @@ def test_download_data_writes_stock_and_benchmark_parquet(
     finally:
         _close_fetch_file_handlers()
 
-    assert set(paths) == {"stocks", "benchmark"}
-    assert paths["stocks"] == Path("data/raw/stock_panel.parquet")
-    assert paths["benchmark"] == Path("data/raw/benchmark_panel.parquet")
+    assert set(paths) == {"download_log", "stock_ohlcv", "benchmark_ohlcv"}
+    assert paths["download_log"] == Path("data/download.log")
+    assert paths["stock_ohlcv"] == Path("data/source/stock_ohlcv.parquet")
+    assert paths["benchmark_ohlcv"] == Path(
+        "data/source/benchmark_000905_ohlcv.parquet"
+    )
     pd.testing.assert_frame_equal(
-        pd.read_parquet(tmp_path / paths["stocks"]),
+        pd.read_parquet(paths["stock_ohlcv"]),
         stock_panel,
     )
     pd.testing.assert_frame_equal(
-        pd.read_parquet(tmp_path / paths["benchmark"]),
+        pd.read_parquet(paths["benchmark_ohlcv"]),
         benchmark_panel,
     )
 

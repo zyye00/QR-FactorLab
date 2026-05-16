@@ -37,12 +37,6 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "NPY"]
 extend-select = ["A"]
-[tool.ruff.lint.pep8-naming]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
-addopts = "--basetemp=.pytest_tmp_current -p no:cacheprovider"
 
 [tool.mypy]
 python_version = "3.13"

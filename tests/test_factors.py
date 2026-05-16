@@ -82,4 +82,3 @@ def _sample_clean_panel(n_days: int, tickers: list[str]) -> pd.DataFrame:
     panel["ret_5d"] = by_ticker.pct_change(5)
     panel["ret_20d"] = by_ticker.pct_change(20)
     return panel
-

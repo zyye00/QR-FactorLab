@@ -20,8 +20,8 @@ from quant.backtest import (
     load_factor_directions,
     select_rebalance_dates,
 )
-from quant.data import PANEL_INDEX, save_parquet
 from quant.factors import FACTOR_COLUMNS
+from quant.fetch import PANEL_INDEX
 from quant.labels import LABEL_COLUMNS
 
 DEFAULT_REPORTS_DIR = "reports"
@@ -53,8 +53,7 @@ def apply_transaction_cost(
     for column in adjusted.columns:
         turnover_column = _turnover_column_for_return(column, turnover)
         adjusted[column] = (
-            adjusted[column]
-            - turnover[turnover_column].reindex(adjusted.index) * rate
+            adjusted[column] - turnover[turnover_column].reindex(adjusted.index) * rate
         )
     return adjusted
 
@@ -152,7 +151,8 @@ def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     with config_file.open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
     reports_dir = _configured_reports_dir(config, config_file)
     figures_dir = reports_dir / "figures"
     n_quantiles = int(config.get("backtest", {}).get("n_quantiles", 5))
@@ -164,11 +164,11 @@ def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     if not rates_bps:
         raise ValueError("At least one transaction cost rate is required.")
 
-    factor_panel = pd.read_parquet(processed_dir / "factor_panel.parquet")
-    label_panel = pd.read_parquet(processed_dir / "label_panel.parquet")
+    factor_panel = pd.read_parquet(work_dir / "factor_panel.parquet")
+    label_panel = pd.read_parquet(work_dir / "label_panel.parquet")
     factor_columns = _configured_factor_columns(config, factor_panel)
     label_columns = _configured_label_columns(config, label_panel)
-    directions = load_factor_directions(processed_dir)
+    directions = load_factor_directions(work_dir)
     if not directions:
         directions = infer_factor_directions(
             factor_panel,
@@ -220,24 +220,16 @@ def compute_cost_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
         rates_bps,
     )
 
-    long_short_turnover_path = save_parquet(
-        long_short_turnover,
-        processed_dir / "long_short_turnover.parquet",
-    )
-    long_only_turnover_path = save_parquet(
-        long_only_turnover,
-        processed_dir / "long_only_turnover.parquet",
-    )
-    long_short_adjusted_path = save_parquet(
-        long_short_adjusted,
-        processed_dir / "cost_adjusted_long_short_returns.parquet",
-    )
-    long_only_adjusted_path = save_parquet(
-        long_only_adjusted,
-        processed_dir / "cost_adjusted_long_only_returns.parquet",
-    )
-    summary_path = processed_dir / "cost_sensitivity_summary.csv"
-    summary.to_csv(summary_path, index=False)
+    long_short_turnover_path = work_dir / "long_short_turnover.parquet"
+    long_only_turnover_path = work_dir / "long_only_turnover.parquet"
+    long_short_adjusted_path = work_dir / "cost_adjusted_long_short_returns.parquet"
+    long_only_adjusted_path = work_dir / "cost_adjusted_long_only_returns.parquet"
+    summary_path = work_dir / "cost_sensitivity_summary.parquet"
+    long_short_turnover.to_parquet(long_short_turnover_path)
+    long_only_turnover.to_parquet(long_only_turnover_path)
+    long_short_adjusted.to_parquet(long_short_adjusted_path)
+    long_only_adjusted.to_parquet(long_only_adjusted_path)
+    summary.to_parquet(summary_path)
     figure_path = plot_cost_sensitivity(
         long_short_adjusted,
         long_only_adjusted,
@@ -299,8 +291,7 @@ def _cost_adjusted_returns_by_rate(
     for rate in rates_bps:
         adjusted = apply_transaction_cost(returns, turnover, rate)
         rename_map = {
-            column: f"{column}__cost_{_rate_label(rate)}bps"
-            for column in adjusted
+            column: f"{column}__cost_{_rate_label(rate)}bps" for column in adjusted
         }
         adjusted = adjusted.rename(
             columns=rename_map,
@@ -332,9 +323,9 @@ def _summarize_costs(
                     "gross_mean": gross_returns[column].mean(),
                     "net_mean": adjusted_returns[adjusted_column].mean(),
                     "gross_cumulative_return": gross_cumulative[column].iloc[-1],
-                    "net_cumulative_return": adjusted_cumulative[
-                        adjusted_column
-                    ].iloc[-1],
+                    "net_cumulative_return": adjusted_cumulative[adjusted_column].iloc[
+                        -1
+                    ],
                     "average_turnover": turnover[turnover_column].mean(),
                     "n_periods": gross_returns[column].count(),
                 }

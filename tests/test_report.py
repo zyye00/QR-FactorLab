@@ -7,10 +7,12 @@ from quant.report import _ic_table, _select_rolling_ic_columns, generate_report
 
 
 def test_generate_report_writes_tables_figures_and_template(tmp_path) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
-    _write_processed_inputs(processed_dir)
-    config_path = _write_config(tmp_path, processed_dir)
+    source_dir = tmp_path / "source"
+    work_dir = tmp_path / "work"
+    source_dir.mkdir()
+    work_dir.mkdir()
+    _write_report_inputs(source_dir, work_dir)
+    config_path = _write_config(tmp_path, source_dir, work_dir)
 
     paths = generate_report(config_path=str(config_path))
 
@@ -69,10 +71,12 @@ def test_report_outputs_are_sorted_by_name() -> None:
 
 
 def test_generate_report_does_not_overwrite_existing_template(tmp_path) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
-    _write_processed_inputs(processed_dir)
-    config_path = _write_config(tmp_path, processed_dir)
+    source_dir = tmp_path / "source"
+    work_dir = tmp_path / "work"
+    source_dir.mkdir()
+    work_dir.mkdir()
+    _write_report_inputs(source_dir, work_dir)
+    config_path = _write_config(tmp_path, source_dir, work_dir)
     reports_dir = tmp_path / "reports"
     reports_dir.mkdir()
     template_path = reports_dir / "final_report.md"
@@ -84,7 +88,7 @@ def test_generate_report_does_not_overwrite_existing_template(tmp_path) -> None:
     assert template_path.read_text(encoding="utf-8") == "manual notes"
 
 
-def _write_processed_inputs(processed_dir: Path) -> None:
+def _write_report_inputs(source_dir: Path, work_dir: Path) -> None:
     index = pd.MultiIndex.from_product(
         [
             pd.to_datetime(["2024-01-01", "2024-01-02"]),
@@ -107,17 +111,17 @@ def _write_processed_inputs(processed_dir: Path) -> None:
         },
         index=index,
     )
-    clean_panel.to_parquet(processed_dir / "clean_panel.parquet")
+    clean_panel.to_parquet(work_dir / "clean_panel.parquet")
     pd.DataFrame({"factor_a": [1.0, 2.0, 1.5, 2.5]}, index=index).to_parquet(
-        processed_dir / "factor_panel.parquet"
+        work_dir / "factor_panel.parquet"
     )
     pd.DataFrame(
         {"fwd_excess_ret_5d": [0.01, 0.02, 0.03, 0.04]},
         index=index,
     ).to_parquet(
-        processed_dir / "label_panel.parquet",
+        work_dir / "label_panel.parquet",
     )
-    clean_panel.iloc[:2, :7].to_parquet(processed_dir / "benchmark_000905.parquet")
+    clean_panel.iloc[:2, :7].to_parquet(source_dir / "benchmark_000905_ohlcv.parquet")
     pd.DataFrame(
         {
             "factor_label": ["factor_a__fwd_excess_ret_5d"],
@@ -127,11 +131,11 @@ def _write_processed_inputs(processed_dir: Path) -> None:
             "rank_ic_ir": [1.5],
             "rank_ic_positive_rate": [0.6],
         }
-    ).to_csv(processed_dir / "ic_summary.csv", index=False)
+    ).to_parquet(work_dir / "ic_summary.parquet")
     pd.DataFrame(
         {"factor_a__fwd_excess_ret_5d": [0.1, 0.2]},
         index=pd.to_datetime(["2024-01-01", "2024-01-02"]),
-    ).to_parquet(processed_dir / "rolling_ic.parquet")
+    ).to_parquet(work_dir / "rolling_ic.parquet")
     pd.DataFrame(
         {
             "factor_label": ["factor_a__fwd_excess_ret_5d"],
@@ -142,15 +146,15 @@ def _write_processed_inputs(processed_dir: Path) -> None:
             "long_only_hit_rate": [0.6],
             "long_only_cumulative_return": [0.2],
         }
-    ).to_csv(processed_dir / "backtest_summary.csv", index=False)
+    ).to_parquet(work_dir / "backtest_summary.parquet")
     pd.DataFrame(
         {"factor_a__fwd_excess_ret_5d": [0.01, 0.02]},
         index=pd.to_datetime(["2024-01-01", "2024-01-02"]),
-    ).to_parquet(processed_dir / "long_short_returns.parquet")
+    ).to_parquet(work_dir / "long_short_returns.parquet")
     pd.DataFrame(
         {"factor_a__fwd_excess_ret_5d": [0.02, 0.03]},
         index=pd.to_datetime(["2024-01-01", "2024-01-02"]),
-    ).to_parquet(processed_dir / "long_only_returns.parquet")
+    ).to_parquet(work_dir / "long_only_returns.parquet")
     pd.DataFrame(
         {
             "factor_label": ["factor_a__fwd_excess_ret_5d"],
@@ -160,15 +164,15 @@ def _write_processed_inputs(processed_dir: Path) -> None:
             "net_cumulative_return": [0.08],
             "average_turnover": [0.5],
         }
-    ).to_csv(processed_dir / "cost_sensitivity_summary.csv", index=False)
+    ).to_parquet(work_dir / "cost_sensitivity_summary.parquet")
     pd.DataFrame(
         {"factor_a__fwd_excess_ret_5d__cost_10bps": [0.01, 0.02]},
         index=pd.to_datetime(["2024-01-01", "2024-01-02"]),
-    ).to_parquet(processed_dir / "cost_adjusted_long_short_returns.parquet")
+    ).to_parquet(work_dir / "cost_adjusted_long_short_returns.parquet")
     pd.DataFrame(
         {"factor_a__fwd_excess_ret_5d__cost_10bps": [0.02, 0.03]},
         index=pd.to_datetime(["2024-01-01", "2024-01-02"]),
-    ).to_parquet(processed_dir / "cost_adjusted_long_only_returns.parquet")
+    ).to_parquet(work_dir / "cost_adjusted_long_only_returns.parquet")
     pd.DataFrame(
         {
             "factor_label": ["factor_a__fwd_excess_ret_5d"],
@@ -178,13 +182,14 @@ def _write_processed_inputs(processed_dir: Path) -> None:
             "ci_upper": [0.2],
             "n_observations": [2],
         }
-    ).to_csv(processed_dir / "bootstrap_ic_summary.csv", index=False)
+    ).to_parquet(work_dir / "bootstrap_ic_summary.parquet")
 
 
-def _write_config(tmp_path: Path, processed_dir: Path) -> Path:
+def _write_config(tmp_path: Path, source_dir: Path, work_dir: Path) -> Path:
     config = {
         "data": {
-            "processed_dir": str(processed_dir),
+            "source_dir": str(source_dir),
+            "work_dir": str(work_dir),
             "universe": "CSI500",
             "benchmark": "000905",
         },

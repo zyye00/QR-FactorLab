@@ -76,12 +76,12 @@ def test_compute_rolling_ic_uses_full_window_by_default() -> None:
 
 
 def test_compute_ic_analysis_writes_outputs(tmp_path) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
     factors, labels = _sample_factor_label_panels()
-    factors[["factor_a"]].to_parquet(processed_dir / "factor_panel.parquet")
-    labels.to_parquet(processed_dir / "label_panel.parquet")
-    config_path = _write_config(tmp_path, processed_dir)
+    factors[["factor_a"]].to_parquet(work_dir / "factor_panel.parquet")
+    labels.to_parquet(work_dir / "label_panel.parquet")
+    config_path = _write_config(tmp_path, work_dir)
 
     paths = compute_ic_analysis(config_path=str(config_path))
 
@@ -92,7 +92,7 @@ def test_compute_ic_analysis_writes_outputs(tmp_path) -> None:
         "ic_summary",
     }
     assert all(path.exists() for path in paths.values())
-    summary = pd.read_csv(paths["ic_summary"])
+    summary = pd.read_parquet(paths["ic_summary"])
     assert summary.loc[0, "factor_label"] == "factor_a__fwd_excess_ret_5d"
     assert summary.loc[0, "ic_mean"] == pytest.approx(0.0)
     assert not (tmp_path / "reports" / "ic_summary.md").exists()
@@ -124,9 +124,9 @@ def _sample_factor_label_panels() -> tuple[pd.DataFrame, pd.DataFrame]:
     return factors, labels
 
 
-def _write_config(tmp_path: Path, processed_dir: Path) -> Path:
+def _write_config(tmp_path: Path, work_dir: Path) -> Path:
     config = {
-        "data": {"processed_dir": str(processed_dir)},
+        "data": {"work_dir": str(work_dir)},
         "features": {"factors": ["factor_a"]},
         "labels": {"horizons": [5], "use_excess_return": True},
         "metrics": {"rolling_window": 2},

@@ -197,18 +197,20 @@ def bootstrap_ic_summary(
 
 
 def compute_bootstrap_ic(config_path: str = "config.yaml") -> dict[str, Path]:
-    with Path(config_path).open("r", encoding="utf-8") as file:
+    config_file = Path(config_path)
+    with config_file.open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
-    ic_panel = pd.read_parquet(processed_dir / "ic_panel.parquet")
-    rank_ic_panel = pd.read_parquet(processed_dir / "rank_ic_panel.parquet")
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
+    ic_panel = pd.read_parquet(work_dir / "ic_panel.parquet")
+    rank_ic_panel = pd.read_parquet(work_dir / "rank_ic_panel.parquet")
     bootstrap_config = config.get("bootstrap", {})
     sampler = create_bootstrap_sampler(bootstrap_config)
     summary = bootstrap_ic_summary(ic_panel, rank_ic_panel, sampler=sampler)
 
-    summary_path = processed_dir / "bootstrap_ic_summary.csv"
-    summary.to_csv(summary_path, index=False)
+    summary_path = work_dir / "bootstrap_ic_summary.parquet"
+    summary.to_parquet(summary_path)
     return {"bootstrap_ic_summary": summary_path}
 
 

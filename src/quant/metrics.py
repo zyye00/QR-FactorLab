@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from quant.data import save_parquet
 from quant.factors import FACTOR_COLUMNS
 from quant.labels import LABEL_COLUMNS, align_factor_and_label
 
@@ -79,9 +78,10 @@ def compute_ic_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     with config_file.open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
-    factor_panel = pd.read_parquet(processed_dir / "factor_panel.parquet")
-    label_panel = pd.read_parquet(processed_dir / "label_panel.parquet")
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
+    factor_panel = pd.read_parquet(work_dir / "factor_panel.parquet")
+    label_panel = pd.read_parquet(work_dir / "label_panel.parquet")
 
     factor_columns = _configured_factor_columns(config, factor_panel)
     label_columns = _configured_label_columns(config, label_panel)
@@ -100,11 +100,14 @@ def compute_ic_analysis(config_path: str = "config.yaml") -> dict[str, Path]:
     rolling_ic = compute_rolling_ic(ic_panel, window=int(rolling_window))
     summary = summarize_ic(ic_panel, rank_ic_panel)
 
-    ic_path = save_parquet(ic_panel, processed_dir / "ic_panel.parquet")
-    rank_ic_path = save_parquet(rank_ic_panel, processed_dir / "rank_ic_panel.parquet")
-    rolling_ic_path = save_parquet(rolling_ic, processed_dir / "rolling_ic.parquet")
-    summary_path = processed_dir / "ic_summary.csv"
-    summary.to_csv(summary_path)
+    ic_path = work_dir / "ic_panel.parquet"
+    rank_ic_path = work_dir / "rank_ic_panel.parquet"
+    rolling_ic_path = work_dir / "rolling_ic.parquet"
+    summary_path = work_dir / "ic_summary.parquet"
+    ic_panel.to_parquet(ic_path)
+    rank_ic_panel.to_parquet(rank_ic_path)
+    rolling_ic.to_parquet(rolling_ic_path)
+    summary.reset_index().to_parquet(summary_path)
 
     return {
         "ic_panel": ic_path,

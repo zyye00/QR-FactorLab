@@ -53,13 +53,12 @@ def test_preprocess_panel_adds_returns_by_ticker() -> None:
     clean = preprocess_panel(panel)
 
     assert all(column in clean.columns for column in RETURN_COLUMNS)
-    assert clean.loc[
-        (pd.Timestamp("2024-01-02"), "000001"), "ret_1d"
-    ] == pytest.approx(1 / 101)
-    assert clean.loc[
-        (pd.Timestamp("2024-01-06"), "000001"), "ret_5d"
-    ] == pytest.approx(5 / 101)
+    assert clean.loc[(pd.Timestamp("2024-01-02"), "000001"), "ret_1d"] == pytest.approx(
+        1 / 101
+    )
+    assert clean.loc[(pd.Timestamp("2024-01-06"), "000001"), "ret_5d"] == pytest.approx(
+        5 / 101
+    )
     assert clean.loc[
         (pd.Timestamp("2024-01-21"), "000001"), "ret_20d"
     ] == pytest.approx(20 / 101)
-

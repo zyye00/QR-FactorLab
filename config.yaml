@@ -6,9 +6,9 @@ data:
   end_date: null
   universe: "CSI500"
   benchmark: "000905"
-  raw_dir: "data/raw"
-  processed_dir: "data/processed"
-  cache_dir: "data/cache"
+  dir: "data"
+  source_dir: "data/source"
+  work_dir: "data/work"
 
 features:
   factors:

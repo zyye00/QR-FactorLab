@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from quant.data import OHLCV_COLUMNS, PANEL_INDEX, save_parquet
+from quant.fetch import OHLCV_COLUMNS, PANEL_INDEX
 
 RETURN_COLUMNS = ["ret_1d", "ret_5d", "ret_20d"]
 
@@ -41,8 +41,12 @@ def preprocess_data(config_path: str = "config.yaml") -> Path:
     with Path(config_path).open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
+    source_dir = Path(config["data"]["source_dir"])
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
     min_history_days = config["preprocess"]["min_history_days"]
-    raw_panel = pd.read_parquet(processed_dir / "stock_panel.parquet")
+    raw_panel = pd.read_parquet(source_dir / "stock_ohlcv.parquet")
     clean = preprocess_panel(raw_panel, min_history_days=min_history_days)
-    return save_parquet(clean, processed_dir / "clean_panel.parquet")
+    path = work_dir / "clean_panel.parquet"
+    clean.to_parquet(path)
+    return path

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from quant.data import PANEL_INDEX, save_parquet
+from quant.fetch import PANEL_INDEX
 
 FACTOR_COLUMNS = [
     "reversal_5",
@@ -73,14 +73,17 @@ def compute_factors(config_path: str = "config.yaml") -> Path:
     with Path(config_path).open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
-    clean_panel = pd.read_parquet(processed_dir / "clean_panel.parquet")
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
+    clean_panel = pd.read_parquet(work_dir / "clean_panel.parquet")
     factor_panel = build_factor_panel(
         clean_panel,
         winsorize_lower=config["preprocess"]["winsorize_lower"],
         winsorize_upper=config["preprocess"]["winsorize_upper"],
     )
-    return save_parquet(factor_panel, processed_dir / "factor_panel.parquet")
+    path = work_dir / "factor_panel.parquet"
+    factor_panel.to_parquet(path)
+    return path
 
 
 def _winsorize_group(

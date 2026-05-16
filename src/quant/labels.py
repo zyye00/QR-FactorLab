@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from quant.data import PANEL_INDEX, save_parquet
+from quant.fetch import PANEL_INDEX
 
 DEFAULT_HORIZONS = [5, 20]
 LABEL_COLUMNS = ["fwd_excess_ret_5d", "fwd_excess_ret_20d"]
@@ -89,14 +89,16 @@ def compute_labels(config_path: str = "config.yaml") -> Path:
     with Path(config_path).open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    processed_dir = Path(config["data"]["processed_dir"])
-    clean_panel = pd.read_parquet(processed_dir / "clean_panel.parquet")
+    source_dir = Path(config["data"]["source_dir"])
+    work_dir = Path(config["data"]["work_dir"])
+    work_dir.mkdir(parents=True, exist_ok=True)
+    clean_panel = pd.read_parquet(work_dir / "clean_panel.parquet")
     use_excess_return = config["labels"].get("use_excess_return", True)
     benchmark_panel = None
     if use_excess_return:
         benchmark = config["data"]["benchmark"]
         benchmark_panel = pd.read_parquet(
-            processed_dir / f"benchmark_{benchmark}.parquet"
+            source_dir / f"benchmark_{benchmark}_ohlcv.parquet"
         )
 
     label_panel = build_label_panel(
@@ -105,7 +107,9 @@ def compute_labels(config_path: str = "config.yaml") -> Path:
         horizons=[int(horizon) for horizon in config["labels"]["horizons"]],
         use_excess_return=use_excess_return,
     )
-    return save_parquet(label_panel, processed_dir / "label_panel.parquet")
+    path = work_dir / "label_panel.parquet"
+    label_panel.to_parquet(path)
+    return path
 
 
 def _normalize_panel(panel: pd.DataFrame) -> pd.DataFrame:

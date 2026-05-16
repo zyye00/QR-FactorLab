@@ -189,12 +189,12 @@ def test_summarize_backtest_reports_core_statistics() -> None:
 
 
 def test_compute_quantile_backtest_writes_outputs(tmp_path) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
     factors, labels = _sample_factor_label_panels()
-    factors.to_parquet(processed_dir / "factor_panel.parquet")
-    labels.to_parquet(processed_dir / "label_panel.parquet")
-    config_path = _write_config(tmp_path, processed_dir)
+    factors.to_parquet(work_dir / "factor_panel.parquet")
+    labels.to_parquet(work_dir / "label_panel.parquet")
+    config_path = _write_config(tmp_path, work_dir)
 
     paths = compute_quantile_backtest(config_path=str(config_path))
 
@@ -206,7 +206,7 @@ def test_compute_quantile_backtest_writes_outputs(tmp_path) -> None:
         "cumulative_return_figure",
     }
     assert all(path.exists() for path in paths.values())
-    summary = pd.read_csv(paths["backtest_summary"])
+    summary = pd.read_parquet(paths["backtest_summary"])
     assert summary.loc[0, "factor_label"] == "factor_a__fwd_excess_ret_5d"
     assert paths["cumulative_return_figure"].stat().st_size > 0
 
@@ -255,9 +255,9 @@ def _series_by_date(values_by_date: dict[str, list[float]]) -> pd.Series:
     return pd.DataFrame(rows).set_index(["date", "ticker"])["value"]
 
 
-def _write_config(tmp_path: Path, processed_dir: Path) -> Path:
+def _write_config(tmp_path: Path, work_dir: Path) -> Path:
     config = {
-        "data": {"processed_dir": str(processed_dir)},
+        "data": {"work_dir": str(work_dir)},
         "features": {"factors": ["factor_a"]},
         "labels": {"horizons": [5], "use_excess_return": True},
         "backtest": {"n_quantiles": 5},

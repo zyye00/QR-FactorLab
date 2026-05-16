@@ -8,7 +8,7 @@ def test_download_data_cli_calls_downloader(monkeypatch, capsys) -> None:
 
     def fake_download_data(config_path: str) -> dict[str, Path]:
         calls["config_path"] = config_path
-        return {"stock_panel": Path("data/processed/stock_panel.parquet")}
+        return {"stock_ohlcv": Path("data/source/stock_ohlcv.parquet")}
 
     monkeypatch.setattr(cli, "download_data", fake_download_data)
 
@@ -16,8 +16,8 @@ def test_download_data_cli_calls_downloader(monkeypatch, capsys) -> None:
 
     assert calls == {"config_path": "custom.yaml"}
     output = capsys.readouterr().out
-    assert "stock_panel:" in output
-    assert "stock_panel.parquet" in output
+    assert "stock_ohlcv:" in output
+    assert "stock_ohlcv.parquet" in output
 
 
 def test_preprocess_data_cli_calls_preprocessor(monkeypatch, capsys) -> None:
@@ -25,7 +25,7 @@ def test_preprocess_data_cli_calls_preprocessor(monkeypatch, capsys) -> None:
 
     def fake_preprocess_data(config_path: str) -> Path:
         calls["config_path"] = config_path
-        return Path("data/processed/clean_panel.parquet")
+        return Path("data/work/clean_panel.parquet")
 
     monkeypatch.setattr(cli, "preprocess_data", fake_preprocess_data)
 
@@ -42,7 +42,7 @@ def test_compute_factors_cli_calls_factor_builder(monkeypatch, capsys) -> None:
 
     def fake_compute_factors(config_path: str) -> Path:
         calls["config_path"] = config_path
-        return Path("data/processed/factor_panel.parquet")
+        return Path("data/work/factor_panel.parquet")
 
     monkeypatch.setattr(cli, "compute_factors", fake_compute_factors)
 
@@ -59,7 +59,7 @@ def test_compute_labels_cli_calls_label_builder(monkeypatch, capsys) -> None:
 
     def fake_compute_labels(config_path: str) -> Path:
         calls["config_path"] = config_path
-        return Path("data/processed/label_panel.parquet")
+        return Path("data/work/label_panel.parquet")
 
     monkeypatch.setattr(cli, "compute_labels", fake_compute_labels)
 
@@ -76,7 +76,7 @@ def test_compute_ic_cli_calls_metric_builder(monkeypatch, capsys) -> None:
 
     def fake_compute_ic_analysis(config_path: str) -> dict[str, Path]:
         calls["config_path"] = config_path
-        return {"ic_panel": Path("data/processed/ic_panel.parquet")}
+        return {"ic_panel": Path("data/work/ic_panel.parquet")}
 
     monkeypatch.setattr(cli, "compute_ic_analysis", fake_compute_ic_analysis)
 
@@ -93,7 +93,7 @@ def test_run_backtest_cli_calls_backtest_builder(monkeypatch, capsys) -> None:
 
     def fake_compute_quantile_backtest(config_path: str) -> dict[str, Path]:
         calls["config_path"] = config_path
-        return {"quantile_returns": Path("data/processed/quantile_returns.parquet")}
+        return {"quantile_returns": Path("data/work/quantile_returns.parquet")}
 
     monkeypatch.setattr(
         cli,
@@ -114,7 +114,7 @@ def test_analyze_costs_cli_calls_cost_builder(monkeypatch, capsys) -> None:
 
     def fake_compute_cost_analysis(config_path: str) -> dict[str, Path]:
         calls["config_path"] = config_path
-        return {"cost_sensitivity_summary": Path("data/processed/costs.csv")}
+        return {"cost_sensitivity_summary": Path("data/work/costs.parquet")}
 
     monkeypatch.setattr(cli, "compute_cost_analysis", fake_compute_cost_analysis)
 
@@ -123,7 +123,7 @@ def test_analyze_costs_cli_calls_cost_builder(monkeypatch, capsys) -> None:
     assert calls == {"config_path": "custom.yaml"}
     output = capsys.readouterr().out
     assert "cost_sensitivity_summary:" in output
-    assert "costs.csv" in output
+    assert "costs.parquet" in output
 
 
 def test_bootstrap_ic_cli_calls_bootstrap_builder(monkeypatch, capsys) -> None:
@@ -131,7 +131,7 @@ def test_bootstrap_ic_cli_calls_bootstrap_builder(monkeypatch, capsys) -> None:
 
     def fake_compute_bootstrap_ic(config_path: str) -> dict[str, Path]:
         calls["config_path"] = config_path
-        return {"bootstrap_ic_summary": Path("data/processed/bootstrap_ic.csv")}
+        return {"bootstrap_ic_summary": Path("data/work/bootstrap_ic.parquet")}
 
     monkeypatch.setattr(cli, "compute_bootstrap_ic", fake_compute_bootstrap_ic)
 
@@ -140,7 +140,7 @@ def test_bootstrap_ic_cli_calls_bootstrap_builder(monkeypatch, capsys) -> None:
     assert calls == {"config_path": "custom.yaml"}
     output = capsys.readouterr().out
     assert "bootstrap_ic_summary:" in output
-    assert "bootstrap_ic.csv" in output
+    assert "bootstrap_ic.parquet" in output
 
 
 def test_generate_report_cli_calls_report_builder(monkeypatch, capsys) -> None:

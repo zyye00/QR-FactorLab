@@ -4,13 +4,8 @@ __pycache__/
 .pytest_tmp/
 .pytest_tmp_current/
 .ruff_cache/
-
-data/raw/*
-!data/raw/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
-data/cache/*
-!data/cache/.gitkeep
+*.log
+*.parquet
 
 /.vscode/
 *.md
